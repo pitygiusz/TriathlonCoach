@@ -18,6 +18,7 @@ def init_db():
             duration_minutes INTEGER,
             distance_km REAL,
             rpe INTEGER,
+            avg_heart_rate INTEGER,
             notes TEXT
         )
     ''')
@@ -31,28 +32,41 @@ def init_db():
     ''')
 
     conn.commit()
+    
+    # Migracja: dodanie kolumny avg_heart_rate jeśli jej brakuje
+    c.execute("PRAGMA table_info(workouts)")
+    columns = [column[1] for column in c.fetchall()]
+    
+    if 'avg_heart_rate' not in columns:
+        c.execute('ALTER TABLE workouts ADD COLUMN avg_heart_rate INTEGER DEFAULT NULL')
+        conn.commit()
+    
     conn.close()
 
-def add_workout(date, discipline, duration, distance, rpe, notes):
+def add_workout(date, discipline, duration, distance, rpe, avg_heart_rate, notes):
     ''' 
     Dodawanie nowego treningu do bazy danych 
     '''
     conn = sqlite3.connect('triathlon_logs.db')
     c = conn.cursor()
-    c.execute('INSERT INTO workouts (date, discipline, duration_minutes, distance_km, rpe, notes) VALUES (?, ?, ?, ?, ?, ?)',
-              (date, discipline, duration, distance, rpe, notes))
+    c.execute('INSERT INTO workouts (date, discipline, duration_minutes, distance_km, rpe, avg_heart_rate, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              (date, discipline, duration, distance, rpe, avg_heart_rate, notes))
     conn.commit()
     conn.close()
 
-def get_workouts(limit=10):
+def get_workouts(limit=None):
     '''
     Pobieranie ostatnich treningów z bazy danych 
     '''
     conn = sqlite3.connect('triathlon_logs.db')
-    df = pd.read_sql_query(f"SELECT * FROM workouts ORDER BY date DESC LIMIT {limit}", conn)
+    if limit is not None:
+        df = pd.read_sql_query(f"SELECT * FROM workouts ORDER BY date DESC LIMIT {limit}", conn)
+    else:
+        df = pd.read_sql_query("SELECT * FROM workouts ORDER BY date DESC", conn)
     conn.close()
     return df
 
+"""
 def get_all_workouts():
     '''
     Pobieranie wszystkich treningów z bazy danych 
@@ -61,7 +75,7 @@ def get_all_workouts():
     df = pd.read_sql_query("SELECT * FROM workouts ORDER BY date DESC", conn)
     conn.close()
     return df
-
+"""
 
 def delete_workout(workout_id):
     '''

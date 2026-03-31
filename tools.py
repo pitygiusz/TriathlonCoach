@@ -3,7 +3,7 @@ import pandas as pd
 import statistics
 from datetime import timedelta
 
-from database import get_all_workouts
+from database import get_workouts
 
 def get_weather_forecast(date_str):
     """Get weather forecast for a given date from weather API"""
@@ -45,12 +45,12 @@ def get_weather_forecast(date_str):
         return None
 
 def long_term_stats():
-    df = get_all_workouts()
+    df = get_workouts()
     if df.empty:
         return None
     df['date'] = pd.to_datetime(df['date'])
 
-    weekly_stats = df.resample('W-MON', on='date').agg({
+    weekly_stats = df.resample('W-MON', on='date').agg({ # Grupowanie po tygodniach (od poniedziałku)
             'duration_minutes': 'sum',
             'distance_km': 'sum',
             'rpe': 'mean' 

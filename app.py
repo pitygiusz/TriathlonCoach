@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 import os
 
-from database import init_db, add_workout, get_workouts, delete_workout, get_coach_logs, save_coach_log, get_all_workouts, get_latest_coach_log
+from database import init_db, add_workout, get_workouts, delete_workout, get_coach_logs, save_coach_log, get_latest_coach_log
 from coach import ask_coach, summary_all, kitchen_help, gym_plan
 
 
@@ -38,26 +38,35 @@ with tab1:
         col1, col2 = st.columns(2)
         with col1:
             date = st.date_input("Data", datetime.now())
-            distance = st.number_input("Dystans (km)", min_value=0.0, step=1.0)
+            
         with col2:
             discipline = st.selectbox("Dyscyplina", ["Pływanie", "Rower", "Bieg", "Siłownia", "Inne"])
+            
+            
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            distance = st.number_input("Dystans (km)", min_value=0.0, step=1.0)
+        with col2:
             duration = st.number_input("Czas (min)", min_value=0, step=10)
+        with col3:
+            avg_heart_rate = st.number_input("Średnie tętno (bpm)", min_value=0, step=1)
             
         rpe = st.slider("RPE (Odczucie zmęczenia 1-10)", 1, 10, 5)
         notes = st.text_area("Notatki")
         
         submitted = st.form_submit_button("Zapisz trening")
         if submitted:
-            add_workout(date, discipline, duration, distance, rpe, notes)
+            add_workout(date, discipline, duration, distance, rpe, avg_heart_rate, notes)
             st.success("Trening zapisany! Dobra robota.")
 
-    st.subheader("Zarządzaj historią")
-    df = get_workouts(20) 
+    st.subheader("Ostatnie treningi")
+    df = get_workouts(10) 
     if not df.empty:
         df.insert(len(df.columns), "delete", False)
 
         edited_df = st.data_editor(
             df,
+            key="data_editor_tab1",
             hide_index=True,  
             column_config={
                 "delete": st.column_config.CheckboxColumn(
@@ -66,7 +75,7 @@ with tab1:
                 ),
                 "id": None,  
             },
-            disabled=["date", "discipline", "duration_minutes", "distance_km", "rpe", "notes"], #
+            disabled=["date", "discipline", "duration_minutes", "distance_km", "rpe", "avg_heart_rate", "notes"], #
         )
 
         # Obsługa usuwania treningów
@@ -87,7 +96,7 @@ with tab1:
 
 with tab2:
     st.header("Statystyki treningowe")
-    df = get_all_workouts()
+    df = get_workouts()
 
     if not df.empty:
         df['date'] = pd.to_datetime(df['date'])
@@ -100,7 +109,7 @@ with tab2:
         with col1:
             st.metric("Łączny czas treningów (min)", total_time)
         with col2:
-            st.metric("Łączny dystans (km)", total_distance)
+            st.metric("Łączny dystans (km)", round(total_distance,2))
 
         sport1, sport2, sport3 = st.columns(3)
         with sport1:
@@ -133,12 +142,15 @@ with tab2:
 with tab3:
     st.header("Konsultacja z trenerem")
     st.write("Wybierz, co chesz uwzględnić w analizie trenera:")
-    include_competition = st.toggle("Terminy zawodów", value=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        include_competition = st.toggle("Terminy zawodów", value=True)
     #competition = st.selectbox("Wybierz zawody", ['SuperSprint Grudziądz 14.06', '1/2 IM Malbork 06.09'])
-    include_weather = st.toggle("Prognoza pogody", value=True)
-    include_long_term = st.toggle("Długoterminowa baza", value=True)
+        include_weather = st.toggle("Prognoza pogody", value=True)
+    with col2:
+        include_long_term = st.toggle("Długoterminowa baza", value=True)
 
-    easier_week = st.toggle("Łatwiejszy tydzień", value=False)
+        easier_week = st.toggle("Łatwiejszy tydzień", value=False)
 
     #st.write("Kliknij poniżej, aby wysłać swoje logi z ostatnich 7 dni do analizy.")
     latest_advice, advice_date = get_latest_coach_log()
@@ -200,6 +212,16 @@ with tab4:
             st.markdown(plan)
             st.caption(f"Szacunkowy koszt analizy: ${cost:.6f}")
 
+
+    st.subheader("Wszystkie treningi")
+    df = get_workouts() 
+    if not df.empty:
+        # Wyświetl ostatnie treningi w formie tabeli, ukryj kolumnę id
+        st.dataframe(df.drop(columns=['id']), use_container_width=True, hide_index=True)
+        
+
+    else:
+        st.info("Brak zapisanych treningów.")
     
 
 

@@ -66,15 +66,13 @@ Oto dodatkowy kontekst:
 {competition_prompt}
 
 Ogólne uwagi:
-- chce mieć wolny dzień po kadym intensywnym treningu,
-- wolę siłownię w tygodniu,
-- pływanie raz w tygodniu, najlepiej w weekend,
-- nie mam trenażera, ale mam dostęp do siłowni.
+- chce mieć minimum 1 dzień przerwy w tygodniu,
+- nie mam trenażera rowerowego, mam dostęp do siłowni i basenu.
 {easier_week_prompt}
 
 Na podstawie tych danych odpowiedz na poniższe pytania:
 
-1. Podsumuj krótko ostatni tydzień treningów, wypisz statystyki i oceń ogólną intensywność.
+1. Podsumuj krótko ostatni tydzień treningów, wypisz statystyki, oceń ogólną intensywność, weź pod uwagę średnie tętno.
 2. Zaproponuj plan na kolejne 7 dni w formie tabelki.
 Bądź konkretny, motywujący, ale surowy jeśli trzeba. 
 """
@@ -121,7 +119,7 @@ Zadanie: Zaproponuj plan na pojedynczy trening na siłowni, dostosowany do potrz
 Trening powinien być krótki (maks 45 minut), ale efektywny, skupiający się na budowaniu siły i wytrzymałości, bez nadmiernego obciążania stawów. Skorzystaj z maszyn na siłowni.
 
 W odpowiedzi uwzględnij JEDYNIE następujące elementy:
-- nazwę treningu (np. "Trening siłowy dla triathlonisty - dzień 1")
+- nazwę treningu
 - bardzo krótkie uzasadnienie, dlaczego ten trening jest dobry dla triathlonisty (np. skupia się na kluczowych grupach mięśniowych, poprawia stabilizację itp.)
 - listę ćwiczeń (maks 5), z krótkim opisem każdego ćwiczenia (np. "Przysiady z hantlami - 3 serie po 12 powtórzeń, skup się na technice i kontroli ruchu")
 - ogólne wskazówki dotyczące tempa, przerw między seriami itp.
