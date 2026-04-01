@@ -5,6 +5,55 @@ from datetime import timedelta
 
 from database import get_workouts
 
+from google import genai
+from google.genai import types
+import time
+
+
+
+def ask_gemini(prompt, temperature=1.0, max_retries=3, response_schema=None, image=None):
+    from google import genai
+    from google.genai import types
+    import time
+
+    client = genai.Client()
+    wait_time = 2
+    
+    config_args = {"temperature": temperature}
+    
+    if response_schema:
+        config_args["response_mime_type"] = "application/json"
+        config_args["response_schema"] = response_schema
+
+    # NOWOŚĆ: Jeśli przekazano obraz, pakujemy go razem z tekstem!
+    contents = [image, prompt] if image else prompt
+
+    for attempt in range(max_retries):
+        try:
+            # Używamy modelu "flash" (lub flash-lite), bo one natywnie obsługują Vision!
+            response = client.models.generate_content(
+                model="gemini-3.1-flash-lite-preview", # lub gemini-3.0-flash
+                contents=contents,
+                config=types.GenerateContentConfig(**config_args)
+            )
+            
+            usage = response.usage_metadata
+            input_tokens = usage.prompt_token_count
+            output_tokens = usage.candidates_token_count
+            cost = (input_tokens * 0.5 / 1000000) + (output_tokens * 3 / 1000000)
+            
+            return response.text, cost
+
+        except Exception as e:
+            error_msg = str(e)
+            if "503" in error_msg or "429" in error_msg or "UNAVAILABLE" in error_msg:
+                if attempt < max_retries - 1:
+                    time.sleep(wait_time)
+                    wait_time *= 2  
+                    continue  
+            raise Exception(f"Błąd API Gemini: {error_msg}")
+        
+
 def get_weather_forecast(date_str):
     """Get weather forecast for a given date from weather API"""
     # Adjusted Lat/Lon to central Warsaw 

@@ -66,16 +66,6 @@ def get_workouts(limit=None):
     conn.close()
     return df
 
-"""
-def get_all_workouts():
-    '''
-    Pobieranie wszystkich treningów z bazy danych 
-    '''
-    conn = sqlite3.connect('triathlon_logs.db')
-    df = pd.read_sql_query("SELECT * FROM workouts ORDER BY date DESC", conn)
-    conn.close()
-    return df
-"""
 
 def delete_workout(workout_id):
     '''
@@ -99,25 +89,32 @@ def save_coach_log(advice):
     conn.commit()
     conn.close()
 
-def get_coach_logs(limit=10):
+def get_coach_logs(limit=None):
     '''
     Pobieranie ostatnich logów trenera z bazy danych 
     '''
     conn = sqlite3.connect('triathlon_logs.db')
-    df = pd.read_sql_query(f"SELECT * FROM coach_logs ORDER BY date DESC LIMIT {limit}", conn)
-    conn.close()
-    return df
+    if limit is not None:
+        df = pd.read_sql_query(f"SELECT * FROM coach_logs ORDER BY date DESC LIMIT {limit}", conn)
+        conn.close()
+        return df
+    else:
+        c = conn.cursor()
+        c.execute("SELECT advice, date FROM coach_logs ORDER BY id DESC LIMIT 1")
+        result = c.fetchone()
+        conn.close()
+        return result[0], result[1]
 
-
-def get_latest_coach_log():
+def update_workout(workout_id, date, discipline, duration, distance, rpe, avg_heart_rate, notes):
+    ''' Aktualizuje istniejący trening w bazie '''
     conn = sqlite3.connect('triathlon_logs.db')
     c = conn.cursor()
-    # Pobieramy najnowszy wpis
-    c.execute("SELECT advice, date FROM coach_logs ORDER BY id DESC LIMIT 1")
-    result = c.fetchone()
+    c.execute('''
+        UPDATE workouts 
+        SET date=?, discipline=?, duration_minutes=?, distance_km=?, rpe=?, avg_heart_rate=?, notes=?
+        WHERE id=?
+    ''', (date, discipline, duration, distance, rpe, avg_heart_rate, notes, workout_id))
+    conn.commit()
     conn.close()
-    
-    if result:
-        return result[0], result[1]
-    return None, None
+
 
