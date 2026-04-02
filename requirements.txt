@@ -1,0 +1,8 @@
+streamlit
+google-genai
+pandas
+requests
+python-telebot
+python-dotenv
+pillow
+pydantic
