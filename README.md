@@ -120,7 +120,7 @@ The bot will start polling for messages. Send `/start` to your bot on Telegram t
 
 ## Screenshots and sample outputs
 
-Streamlit app demo can be found [here](https://github.com/pitygiusz/TriathlonCoach/demo/app_demo.md).
+Streamlit app demo can be found [here](./demo/app_demo.md)
 
 Telegram bot demo can be found [here](). [WIP]
 

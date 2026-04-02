@@ -1,3 +1,5 @@
+# Streamlit UI Demo
+
 ### Workout Logging
 ![image](screenshots/trening_wide.png)
 ### Statistics
@@ -5,7 +7,7 @@
 ### Coach
 ![image](screenshots/trener_wide2.png)
 
-### Sample coach advice (translated from Polish)
+## Sample coach advice (translated from Polish)
 Hi. As your coach, I've analyzed your recent progress and historical data. We need to have an honest talk: your training volume is like a rollercoaster. After a massive week in mid-February (over 10 hours!), you've fallen into a deep slump. If you're thinking about the 1/2 IM in Malbork, this kind of irregularity is your biggest enemy.
 
 Here is the analysis and action plan.
