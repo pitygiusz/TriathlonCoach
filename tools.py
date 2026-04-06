@@ -2,19 +2,14 @@ import requests
 import pandas as pd
 import statistics
 from datetime import timedelta
-
-from database import get_workouts
-
 from google import genai
 from google.genai import types
 import time
 
+from database import get_workouts
 
 
-def ask_gemini(prompt, temperature=1.0, max_retries=3, response_schema=None, image=None):
-    from google import genai
-    from google.genai import types
-    import time
+def ask_gemini(prompt, temperature=1.0, max_retries=3, response_schema=None, image=None, model_name="gemini-3.1-flash-lite-preview"):
 
     client = genai.Client()
     wait_time = 2
@@ -25,14 +20,12 @@ def ask_gemini(prompt, temperature=1.0, max_retries=3, response_schema=None, ima
         config_args["response_mime_type"] = "application/json"
         config_args["response_schema"] = response_schema
 
-    # NOWOŚĆ: Jeśli przekazano obraz, pakujemy go razem z tekstem!
     contents = [image, prompt] if image else prompt
 
     for attempt in range(max_retries):
         try:
-            # Używamy modelu "flash" (lub flash-lite), bo one natywnie obsługują Vision!
             response = client.models.generate_content(
-                model="gemini-3.1-flash-lite-preview", # lub gemini-3.0-flash
+                model=model_name, 
                 contents=contents,
                 config=types.GenerateContentConfig(**config_args)
             )

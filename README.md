@@ -1,54 +1,33 @@
-# Triathlon Coach AI
+# Triathlon Coach
 
-A personal triathlon training assistant that helps athletes log workouts, track progress, and receive AI-generated coaching advice and personalized training plans.
+An agent-based AI coaching system designed to assist you in training for traithlons.
+
 
 ## Goal
 The goal of this project is to support triathlon preparation by elevating simple in-chat advice from AI into a more personalized and convenient experience. 
 
-The system is designed in a way that feels like having a personal coach available 24/7, who knows your training history, tiredness, race goals and weather forecasts.
+You can just text your coach 
+>What should I do today?
 
-By combining a user-friendly web app for detailed logging and analysis with a Telegram bot for quick, on-the-go interactions that feels like talking to your coach, the system ensures that athletes can access coaching support whenever and wherever they need it.
+>Analyze my latest swimming
 
+>Add a 10km run yesterday, 55min, 155bpm
+
+Available 24/7, the system considers training history, fatigue, race goals, and weather forecasts. It combines a **Streamlit web app** for detailed analytics with a **Telegram bot** for quick, on-the-go interactions that feel like talking to a real coach.
 
 ## Key Features
+- **Multi-modal Logging:** Log workouts via natural language or by sending screenshots from Strava/Garmin app.
+- **Personalized Coaching:** Generate training plans or daily suggestions tailored to recent performance and recovery needs.
+- **Web Interface (Streamlit):** Interactive dashboard for workout logging, statistics, and race countdowns.
+- **Telegram Bot:** On-demand NLP-powered interface for seamless, conversational coaching.
 
-- **Track workouts** - Log training sessions with discipline, duration, distance, RPE, and notes. 
-- **Generate personalized plans** - Get AI-generated weekly training plans and one-off workout suggestions tailored to your recent performance and goals.
-- **Provide coaching advice** - Receive detailed coaching feedback on your training history, form assessment, and targeted recommendations to improve performance.
-- **Context-aware recommendations** - All suggestions take into account weather forecasts, upcoming races, training fatigue, recovery needs, and your current fitness level.
+## System Architecture
+Instead of relying on a single, unpredictable prompt, the bot implements a **Semantic Router** and **Specialized Sub-Agents**:
+- **The Router:** Uses a fast and cheap model to intercept messages, enforce strict Pydantic JSON schemas, classify intent, and detect conversational follow-ups.
+- **Specialized Sub-Agents:** Dedicated agents for Vision parsing, NLP parsing, and History analysis. Other questions are routed to a heavier model for expert knowledge.
+- **Human-in-the-Loop:** Agents don't blindly hallucinate database changes. They generate parsed previews and require explicit user confirmation before executing SQLite operations.
 
-### Web Interface
-
-The **Streamlit web app** provides user with easy access to all features in a web-friendly format:
-- Interactive workout logging form with edit and delete capabilities
-- Comprehensive dashboard with statistics and race countdowns
-- AI-powered coaching tab to generate tailored weekly plans
-
-### Telegram Bot
-
-The **Telegram bot** delivers on-demant coaching with natural language understanding:
-- **Natural language input** - Ask anything ("What should I do today?", "Analyze my swimming", "Delete yesterday's run") and the NLP router directs to the appropriate agent
-- **Photo-based logging** - Send a screenshot of your training app (Strava, Garmin, etc.) and the bot extracts workout data automatically
-- **Text-based logging** - Describe a workout naturally ("30 min easy run yesterday, RPE 5") and the bot parses, previews, and saves it with your confirmation
-
-### Agent-Powered Intelligence
-
-The app's core strength is its **agent-based AI system** - six specialized autonomous agents based on Google Gemini, optimized for specific coaching tasks:
-
-- **One Training Proposer** - Suggests the optimal single workout for today
-- **Weekly Plan Proposer** - Generates 7-day training schedules  
-- **History Analyzer** - Answers questions about your training and form
-- **Workout Parser** - Converts natural language descriptions to structured data
-- **Workout Image Parser** - Extracts data from training app screenshots using vision AI
-- **Delete Workout** - Intelligently removes workouts based on natural language descriptions
-
-Rather than using a single monolithic AI prompt, each agent is context-aware and specialized for its task, ensuring better accuracy, faster responses, and more focused coaching.
-
-By utilizing the newest `gemini-3.1-flash-lite-preview` model, the system can quickly and inexpensively handle multi-modal inputs (text + images) and generate structured outputs with JSON schemas, making it ideal for this coaching application.
-
-The project is designed to be **self-hosted on Raspberry Pi** with secure remote access via Tailscale and Telegram.
-
-
+More details about the architecture and design choices can be found [here](./details.md).
 
 ## Project Structure
 
@@ -109,20 +88,19 @@ python bot.py
 The bot will start polling for messages. Send `/start` to your bot on Telegram to begin and then simply write natural language requests.
 
 ## Technologies Used
-
-- **Python** (Streamlit, Pandas, Pydantic)
-- **Google Gemini API** (multi-modal AI, structured outputs with JSON schemas)
-- **Telegram Bot API** (python-telebot)
-- **SQLite** (local database)
-- **Open-Meteo API** (weather forecasting)
-- **PIL** (image processing for vision-based workout parsing)
+- **AI & LLM:** Google Gemini API, Structured Outputs (JSON/Pydantic)
+- **Backend:** Python, Pandas, Telebot (pyTelegramBotAPI), Open-Meteo API
+- **Frontend:** Streamlit
+- **Database:** SQLite (Local, lightweight, edge-ready)
+- **Deployment:** Self-hosted on Raspberry Pi (Edge AI) with Tailscale for secure remote access.
 
 
 ## Screenshots and sample outputs
 
-Streamlit app demo can be found [here](./demo/app_demo.md)
+- [Streamlit app demo](./demo/app_demo.md)
 
-Telegram bot demo can be found [here](). [WIP]
+- [Telegram bot demo](./demo/chat_demo.md)
 
 ## Contributions
 This project was completed individually. Some parts of the code were written/debugged with the help of AI.
+

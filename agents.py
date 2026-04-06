@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 import pandas as pd
 import json
-
 from pydantic import BaseModel, Field
 from typing import Literal
 
@@ -10,35 +9,39 @@ from coach import ask_gemini
 
 
 ########################################
-# AGENT 1: One Training Proposer
+# AGENT 1: Training Proposer
 ########################################
 
-def propose_one_training(message, history_df, include_weather):
+def propose_training(message, history_df):
     history_df['date'] = pd.to_datetime(history_df['date'])
-    cutoff_date = datetime.now() - timedelta(days=7)
+    cutoff_date = datetime.now() - timedelta(days=14)
     recent_history = history_df[history_df['date'] >= cutoff_date]
 
     if recent_history.empty:
         return "Brak danych z ostatnich 7 dni. Dodaj więcej treningów, aby otrzymać analizę.", 0
+    history_text = recent_history.to_string(index=False)
 
     today = datetime.now().strftime('%Y-%m-%d')
-    weather_prompt = ""
 
-    if include_weather:
-        weather = get_weather_forecast(today)
-        weather_prompt = f"Weź pod uwagę warunki pogodowe na najbliszy tydzień:\n{weather}.\nNie chcę jeździć w deszczu i mrozie."
+    weather = get_weather_forecast(today)
+    weather_prompt = f"Weź pod uwagę warunki pogodowe na najbliszy tydzień:\n{weather}.\nNie chcę jeździć w deszczu i mrozie."
+    competition_prompt = "Uwzględnij w analizie, że moim celem są zawody SuperSprint Grudziądz 14.06 i 1/2 IM Malbork 06.09."
+    context = "Nie mam trenażera, ale mam dostęp do siłowni i basenu."
 
-    history_text = recent_history.to_string(index=False)
-    
-    prompt = f"""Jesteś profesjonalnym trenerem triathlonu. Przygotowujesz mnie do zawodów. Oto moje treningi z ostatnich 7 dni:
-    {history_text}
-    {weather_prompt}
-Na podstawie tych danych zaproponuj JEDEN trening, który będzie najbardziej efektywny i dopasowany do mojej aktualnej formy i warunków. Uwzględnij prośbę {message}.
+    prompt = f"""Jesteś profesjonalnym trenerem triathlonu. Przygotowujesz mnie do zawodów. Dziś jest {today}. Oto moje treningi z ostatnich 14 dni:
+{history_text}
+Oto dodatkowy kontekst:
+{weather_prompt}
+{competition_prompt}
+{context}
 
-Zwróć JEDYNIE plan tego treningu (dyscyplina, czas trwania, dystans, intensywność) w zwięzłej formie.
+Oto moje pytanie do Ciebie: {message}
+Przygotuj to o co proszę, weź pod uwagę wszystkie dane w tym poziom zmęczenia, formy, warunków pogodowych i celów.
+Jezeli uwazasz, że powinienem odpocząć, zaproponuj trening regeneracyjny lub dzień wolny.
+Zwróć JEDYNIE plan tego treningu (dyscyplina, czas trwania, dystans, intensywność) w zwięzłej formie (ma mieścić się w jednej wiadomości).
 Bądź konkretny, motywujący, ale surowy jeśli trzeba.
 """
-    response, _ = ask_gemini(prompt, temperature=2.0)
+    response, _ = ask_gemini(prompt, temperature=1.5)
     return response
 
 ########################################
@@ -52,11 +55,13 @@ def analyze_history(question, history_df):
 zawodów SuperSprint Grudziądz 14.06 i 1/2 IM Malbork 06.09. Dziś jest {today}. Oto moje ostatnie treningi:
 {history_text}
 Na ich podstawie odpowiedz na moje pytanie: {question}
-Jeeli pytam o podsumowanie to wypisz statystyki, oceń fomę oraz podaj wskazówki.
-Zwróć maksymalnie 5 zdań plus statystyki, jeśli o nie proszę.
-Nie dodawaj zbędnych wstępów i komentarzy. Bądź konkretny, motywujący, ale surowy jeśli trzeba.
+
+WAŻNE ZASADY:
+1. Jeśli użytkownik prosi o ogólne podsumowanie historii, wypisz statystyki (czas i km z podziałem na dyscypliny), oceń formę i podaj wskazówki.
+2. Jeśli z kontekstu zapytania wynika, że chodzi o JEDEN KONKRETNY trening (np. użytkownik pisze "podsumuj ten trening", odnosząc się do ostatniego biegu), znajdź ten konkretny wiersz w historii i przeanalizuj tylko jego statystyki.
+3. Zwróć maksymalnie 5 zdań plus ewentualne statystyki. Bądź konkretny, motywujący, ale surowy jeśli trzeba. Nie dodawaj zbędnych wstępów.
 """
-    response, _ = ask_gemini(prompt, temperature=2.0)
+    response, _ = ask_gemini(prompt, temperature=1.0)
     return response
 
 
@@ -76,8 +81,7 @@ class AddWorkoutScema(BaseModel):
 
 
 def parse_workout_data(query, previous_data=None):
-    # Pobieramy dzisiejszą datę, żeby Gemini miało punkt odniesienia
-    today_ref = datetime.now().strftime('%Y-%m-%d (dzisiaj to %A)')
+    today_ref = datetime.now().strftime('%Y-%m-%d')
     
     if previous_data:
         prompt = f"""Dzisiaj jest {today_ref}. 
@@ -109,50 +113,12 @@ def parse_workout_data(query, previous_data=None):
 
 
 ########################################
-# AGENT 4: Weekly Plan Proposer
-########################################
-
-def propose_weekly_plan(message, history_df):
-    history_df['date'] = pd.to_datetime(history_df['date'])
-    cutoff_date = datetime.now() - timedelta(days=7)
-    recent_history = history_df[history_df['date'] >= cutoff_date]
-
-    if recent_history.empty:
-        return "Brak danych z ostatnich 7 dni. Dodaj więcej treningów, aby otrzymać analizę."
-
-    today = datetime.now().strftime('%Y-%m-%d')
-    weather = get_weather_forecast(today)
-
-    weather_prompt = f"Weź pod uwagę warunki pogodowe na najbliszy tydzień:\n{weather}.\nNie chcę jeździć w deszczu i mrozie."
-    competition_prompt = "Uwzględnij w analizie, że moim celem są zawody SuperSprint Grudziądz 14.06 i 1/2 IM Malbork 06.09."
-    history_text = recent_history.to_string(index=False)
-    
-    prompt = f"""Jesteś profesjonalnym trenerem triathlonu. Przygotowujesz mnie do zawodów. Oto moje treningi z ostatnich 7 dni:
-    {history_text}
-
-Oto dodatkowy kontekst:
-{weather_prompt}
-{competition_prompt}
-
-Na podstawie tych danych zaproponuj plan treningowy na najbliższy tydzień, który będzie najbardziej efektywny i dopasowany do mojej aktualnej formy i warunków. Uwzględnij prośbę {message}.
-
-Zwróć JEDYNIE ten plan w zwięzłej formie. Bądź konkretny, motywujący, ale surowy jeśli trzeba.
-"""
-    response, _ = ask_gemini(prompt, temperature=0.5)
-    return response
-
-
-
-########################################
-# AGENT 5: Delete Workout Agent
+# AGENT 4: Delete Workout Agent
 ########################################
 
 
 class DeleteMatchSchema(BaseModel):
     matched_id: int = Field(description="ID znalezionego treningu, lub -1 jeśli nie znaleziono dopasowania w bazie.")
-
-
-
 
 def delete_workout_bot(message, history_df):
     recent_workouts = history_df
@@ -185,7 +151,7 @@ Znajdź ID treningu, o który chodzi użytkownikowi.
 
 
 ########################################
-# AGENT 6: Parse Workout from Image
+# AGENT 5: Parse Workout from Image
 ########################################
 
 import io

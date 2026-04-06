@@ -1,15 +1,14 @@
 import os
 import telebot
 import json
-from datetime import timedelta, datetime
 from dotenv import load_dotenv
 import pandas as pd
 from pydantic import BaseModel, Field
 from typing import Literal
 
 from database import get_workouts, get_coach_logs, save_coach_log, delete_workout, add_workout
-from coach import ask_coach, ask_gemini
-from agents import analyze_history, propose_one_training, propose_weekly_plan, parse_workout_data, delete_workout_bot, parse_workout_from_image
+from coach import ask_coach
+from agents import analyze_history, propose_training, parse_workout_data, delete_workout_bot, parse_workout_from_image
 from tools import ask_gemini
 
 
@@ -20,7 +19,7 @@ MY_CHAT_ID = int(os.getenv("MY_CHAT_ID"))
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# 2. Zabezpieczenie: Funkcja sprawdzająca, czy to Ty piszesz
+# 2. Zabezpieczenie, tylko znajomy użytkownik może korzystać z bota
 def is_me(message):
     return message.chat.id == MY_CHAT_ID
 
@@ -30,44 +29,8 @@ def send_welcome(message):
     bot.reply_to(message, "Cześć Szefie!")
 
 ########################################
-# Komendy 
+# COMMANDS 
 ########################################
-
-
-# /zobacz_treningi - pokazuje historię treningów z ostatniego tygodnia
-
-@bot.message_handler(commands=['zobacz_treningi'], func=is_me)
-def send_workouts(message):
-    try:
-        workouts = get_workouts(limit=14)
-        workouts['date'] = pd.to_datetime(workouts['date'])
-        cutoff_date = datetime.now() - timedelta(days=7)
-        recent_history = workouts[workouts['date'] >= cutoff_date]
-        recent_history['date'] = recent_history['date'].dt.strftime('%Y-%m-%d')
-
-        
-        if workouts.empty:
-            bot.reply_to(message, "Brak zapisanych treningów.")
-            return
-        
-        response = "Oto twoje treningi z ostatniego tygodnia:\n\n"
-
-        for index, row in recent_history.iterrows():
-            date_val = row['date']
-            disc_val = row['discipline']
-            dist_val = row['distance_km']
-            dur_val = row['duration_minutes']
-            rpe_val = row['rpe']
-            
-            hr_val = int(row['avg_heart_rate']) if pd.notna(row['avg_heart_rate']) else "-"
-            
-            response += f"{date_val} | {disc_val} | {dist_val}km ({dur_val} min) | RPE: {rpe_val} | HR: {hr_val}\n"
-
-        bot.reply_to(message, response, parse_mode="Markdown")
-
-    except Exception as e:
-        bot.reply_to(message, f"Wystąpił błąd w kodzie:\n`{str(e)}`", parse_mode="Markdown")
-
 
 # /ostatnia_porada - pokazuje ostatnią poradę trenera
 
@@ -99,45 +62,24 @@ def send_new_advice(message):
         bot.reply_to(message, f"Wystąpił błąd w kodzie:\n`{str(e)}`", parse_mode="Markdown")
 
 
-# /trening - generuje pomysł na trening na dziś
-
-@bot.message_handler(commands=['trening'], func=is_me)
-def send_one_training(message):
-    try:
-        history = get_workouts(limit=14)
-        user_input = ""
-        advice = propose_one_training(user_input, history, True)
-        response = f"**Trening na dziś:**\n\n{advice}"
-        bot.reply_to(message, response, parse_mode="Markdown")
-    except Exception as e:
-        bot.reply_to(message, f"Wystąpił błąd w kodzie:\n`{str(e)}`", parse_mode="Markdown")
-
-
-###
+########################################
+# SCREENSHOT PARSING
+########################################
 @bot.message_handler(content_types=['photo'], func=is_me)
 def handle_photo_workout(message):
     try:
         bot.send_message(message.chat.id, "Analizuję zrzut ekranu... 📸", parse_mode="Markdown")
-        
-        # 1. Telegram wysyła zdjęcie w kilku rozdzielczościach. Ostatnie [-1] jest największe.
         file_info = bot.get_file(message.photo[-1].file_id)
-        
-        # 2. Pobieramy plik z serwerów Telegrama do pamięci bota
         downloaded_file = bot.download_file(file_info.file_path)
-        
-        # 3. Wysyłamy obraz do naszego nowego Agenta Vision
         parsed_data = parse_workout_from_image(downloaded_file)
         
-        # 4. Magia integracji: Używamy tego samego podglądu co przy dodawaniu z tekstu!
         preview = f"Odczytałem następujące dane ze zdjęcia:\n\nData: {parsed_data['date']}\nDyscyplina: {parsed_data['discipline']}\nCzas: {parsed_data['duration_minutes']} min\nDystans: {parsed_data['distance_km']} km\nRPE: {parsed_data['rpe']}\nHR: {parsed_data['avg_heart_rate']}\nNotatki: {parsed_data['notes']}\n\n**Czy wszystko się zgadza?**\n(Napisz 'Tak' by zapisać, lub powiedz co poprawić)"
-        
         msg = bot.reply_to(message, preview, parse_mode="Markdown")
-        
-        # 5. Przekazujemy pałeczkę do Twojej funkcji akceptującej!
+
         bot.register_next_step_handler(msg, process_add_confirmation, parsed_data)
         
     except Exception as e:
-        bot.reply_to(message, f"❌ Nie udało się odczytać zdjęcia:\n`{str(e)}`", parse_mode="Markdown")
+        bot.reply_to(message, f"Nie udało się odczytać zdjęcia:\n`{str(e)}`", parse_mode="Markdown")
 
 
 
@@ -145,58 +87,90 @@ def handle_photo_workout(message):
 # NLP
 ########################################
 
+last_bot_responses = {}
+user_state = {}
+
 class RouterSchema(BaseModel):
-    intent: Literal["HISTORIA", "DODAJ_TRENING", "WYMYŚL_TRENING", "TYGODNIOWY_PLAN", "USUN_TRENING", "INNE"]
-    odpowiedz_trenera: str = Field(description="Jeśli intent to INNE, odpowiedz użytkownikowi. W przeciwnym razie zostaw puste.")
+    intent: Literal["HISTORIA", "DODAJ_TRENING", "PLAN_TRENINGOWY", "USUN_TRENING", "INNE"]
+    is_follow_up: bool = Field(description="Zaznacz True, jeśli użytkownik nawiązuje do Twojej ostatniej odpowiedzi (np. 'zrób to krócej', 'zmień na bieganie').")
+    #odpowiedz_trenera: str = Field(description="Jeśli intent to INNE, odpowiedz użytkownikowi. W przeciwnym razie zostaw puste.")
 
 @bot.message_handler(func=lambda message: is_me(message) and message.text and not message.text.startswith('/'))
 def handle_natural_language(message):
     user_text = message.text
+    chat_id = message.chat.id
+
+    stan = user_state.get(chat_id, {"response": "", "intent": ""})
+    ostatnia_odpowiedz = stan["response"]
+    ostatni_intent = stan["intent"]
 
     router_prompt = f"""
-    Jesteś asystentem trenera. Użytkownik napisał: "{user_text}".
-    Odgadnij intencję z wiadomości (HISTORIA, DODAJ_TRENING, WYMYŚL_TRENING, TYGODNIOWY_PLAN lub INNE).
+    Jesteś asystentem trenera. 
+    Oto Twoja OSTATNIA odpowiedź do użytkownika: "{ostatnia_odpowiedz}"
+    TERAZ użytkownik napisał: "{user_text}".
+    Jeśli użytkownik nawiązuje do Twojej ostatniej odpowiedzi, ustaw is_follow_up na True oraz intencję na {ostatni_intent}.
+    Jeśli użytkownik zadaje nowe pytanie lub prośbę, ustaw is_follow_up na False i odgadnij intencję z wiadomości (HISTORIA, DODAJ_TRENING, PLAN_TRENINGOWY, USUN_TRENING lub INNE).
+
     """
     
     try:
         bot.send_message(message.chat.id, "Analizuję Twoją wiadomość...", parse_mode="Markdown")
         
-        json_response, _ = ask_gemini(router_prompt, response_schema=RouterSchema)
+        json_response, _ = ask_gemini(router_prompt, response_schema=RouterSchema, temperature=0.0)
     
         ai_data = json.loads(json_response)
+        
         intent = ai_data.get("intent")
+        is_follow_up = ai_data.get("is_follow_up", False)
+
+        if intent != ostatni_intent:
+            is_follow_up = False
+
+        if is_follow_up and ostatnia_odpowiedz:
+            rich_query = f"Kontekst rozmowy - to była Twoja ostatnia odpowiedź do mnie:\n{ostatnia_odpowiedz}\n\nTeraz napisałem do Ciebie: \"{user_text}\"\nOdpowiedz mi w nawiązaniu do naszej rozmowy."
+        else:
+            rich_query = user_text
         
         if intent == "HISTORIA":
-            bot.send_message(message.chat.id, "Analizuję twoją historię treningową...", parse_mode="Markdown")
+            if is_follow_up and ostatnia_odpowiedz:
+                bot.send_message(message.chat.id, "Modyfikuję odpowiedź...", parse_mode="Markdown")
+            else:
+                bot.send_message(message.chat.id, "Analizuję twoją historię treningową...", parse_mode="Markdown")
             history = get_workouts(limit=14)
-            response = analyze_history(user_text, history) 
+            response = analyze_history(rich_query, history) 
             response = response.replace('*', '')
             bot.reply_to(message, response)
+            user_state[chat_id] = {"response": response, "intent": intent}
 
         elif intent == "DODAJ_TRENING":
             bot.send_message(message.chat.id, "Analizuję Twoje dane...", parse_mode="Markdown")
-            parsed_data = parse_workout_data(user_text)
+            parsed_data = parse_workout_data(rich_query)
             preview = f"Oto Twój trening:\n\nData: {parsed_data['date']}\nDyscyplina: {parsed_data['discipline']}\nCzas: {parsed_data['duration_minutes']} min\nDystans: {parsed_data['distance_km']} km\nRPE: {parsed_data['rpe']}\nHR: {parsed_data['avg_heart_rate']}\nNotatki: {parsed_data['notes']}\n\nCzy wszystko się zgadza?"
             msg = bot.reply_to(message, preview, parse_mode="Markdown")
             bot.register_next_step_handler(msg, process_add_confirmation, parsed_data)
+            user_state[chat_id] = {"response": "", "intent": ""}
             
-        elif intent == "WYMYŚL_TRENING":
-            bot.send_message(message.chat.id, "Przygotowuję plan na trening...", parse_mode="Markdown")
+        elif intent == "PLAN_TRENINGOWY":
+            if is_follow_up and ostatnia_odpowiedz:
+                bot.send_message(message.chat.id, "Modyfikuję plan treningowy...", parse_mode="Markdown")
+            else:
+                bot.send_message(message.chat.id, "Przygotowuję plan treningowy...", parse_mode="Markdown")
             history = get_workouts(limit=14)
-            response = propose_one_training(user_text, history, True) 
+            response = propose_training(rich_query, history) 
             response = response.replace('*', '')
             bot.reply_to(message, response)
-
-        elif intent == "TYGODNIOWY_PLAN":
-            bot.send_message(message.chat.id, "Przygotowuję tygodniowy plan treningowy...", parse_mode="Markdown")
-            history = get_workouts(limit=14)
-            response = propose_weekly_plan(user_text, history) 
-            response = response.replace('*', '')
-            bot.reply_to(message, response)
+            user_state[chat_id] = {"response": response, "intent": intent}
             
         elif intent == "INNE":
-            odpowiedz = ai_data.get("odpowiedz_trenera")
-            bot.reply_to(message, odpowiedz, parse_mode="Markdown")
+            if is_follow_up and ostatnia_odpowiedz:
+                bot.send_message(message.chat.id, "Odpowiadam na Twoje kolejne pytanie...", parse_mode="Markdown")
+            else:
+                bot.send_message(message.chat.id, "Odpowiadam na Twoje pytanie...", parse_mode="Markdown")
+            #bot.send_message(message.chat.id, "Odpowiadam na Twoje pytanie...", parse_mode="Markdown")
+            response = ask_gemini(prompt = rich_query, temperature=0.7, model_name="gemini-3-flash-preview")
+            #odpowiedz = ai_data.get("odpowiedz_trenera")
+            bot.reply_to(message, response, parse_mode="Markdown")
+            user_state[chat_id] = {"response": response, "intent": intent}
 
         elif intent == "USUN_TRENING":
             bot.send_message(message.chat.id, "Szukam treningu, o który Ci chodzi...")
@@ -213,14 +187,10 @@ def handle_natural_language(message):
                     
                 msg = bot.reply_to(message, f"Znalazłem ten trening. Czy na pewno chcesz go usunąć?\n\n{details}\n\nOdpowiedz: Tak lub Nie.")
                 bot.register_next_step_handler(msg, process_delete_confirmation, w_id)    
+            user_state[chat_id] = {"response": "", "intent": ""}
 
     except Exception as e:
         bot.reply_to(message, f"Wystąpił błąd w kodzie:\n`{str(e)}`", parse_mode="Markdown")
-
-
-
-# Pamiętaj, żeby zaimportować parse_workout_from_image z agents.py na górze pliku!
-
 
 
 

@@ -78,15 +78,12 @@ with tab1:
 
         col1, col2 = st.columns(2)
         
-        # PRZYCISK 1: Zapisywanie edycji
         with col1:
             if st.button("Zapisz zmiany w tabeli", type="primary", use_container_width=True):
-                # Zabezpieczenie: Zamieniamy puste komórki na odpowiednie formaty, żeby baza nie dostała błędu NaN
                 edited_df.fillna({"notes": "", "avg_heart_rate": 0, "distance_km": 0.0}, inplace=True)
                 
-                # Przechodzimy przez każdy wiersz w tabeli na ekranie
                 for index, row in edited_df.iterrows():
-                    if not row["delete"]: # Ignorujemy te, które są zaznaczone do usunięcia
+                    if not row["delete"]: 
                         update_workout(
                             workout_id=row['id'],
                             date=row['date'],
@@ -98,9 +95,8 @@ with tab1:
                             notes=row['notes']
                         )
                 st.success("Zapisano zmiany!")
-                st.rerun() # Odświeża aplikację
+                st.rerun() 
 
-        # PRZYCISK 2: Usuwanie 
         with col2:
             if st.button("Usuń zaznaczone", use_container_width=True):
                 to_delete = edited_df[edited_df["delete"] == True]
@@ -197,7 +193,7 @@ with tab3:
                     st.markdown(advice)
                     save_coach_log(advice)
                 
-                    st.rerun()  # Odśwież stronę, aby zobaczyć nową analizę
+                    st.rerun()  
                 else:
                     st.warning("Brak danych z ostatnich 7 dni.")
 
