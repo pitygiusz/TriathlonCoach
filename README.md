@@ -27,7 +27,7 @@ Instead of relying on a single, unpredictable prompt, the bot implements a **Sem
 - **Specialized Sub-Agents:** Dedicated agents for Vision parsing, NLP parsing, and History analysis. Other questions are routed to a heavier model for expert knowledge.
 - **Human-in-the-Loop:** Agents don't blindly hallucinate database changes. They generate parsed previews and require explicit user confirmation before executing SQLite operations.
 
-More details about the architecture and design choices can be found [here](./details.md).
+More details about the architecture and design choices can be found [here](./architecture.md).
 
 ## Project Structure
 
