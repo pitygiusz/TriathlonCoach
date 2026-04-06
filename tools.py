@@ -2,8 +2,50 @@ import requests
 import pandas as pd
 import statistics
 from datetime import timedelta
+from google import genai
+from google.genai import types
+import time
 
 from database import get_workouts
+
+
+def ask_gemini(prompt, temperature=1.0, max_retries=3, response_schema=None, image=None, model_name="gemini-3.1-flash-lite-preview"):
+
+    client = genai.Client()
+    wait_time = 2
+    
+    config_args = {"temperature": temperature}
+    
+    if response_schema:
+        config_args["response_mime_type"] = "application/json"
+        config_args["response_schema"] = response_schema
+
+    contents = [image, prompt] if image else prompt
+
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model=model_name, 
+                contents=contents,
+                config=types.GenerateContentConfig(**config_args)
+            )
+            
+            usage = response.usage_metadata
+            input_tokens = usage.prompt_token_count
+            output_tokens = usage.candidates_token_count
+            cost = (input_tokens * 0.5 / 1000000) + (output_tokens * 3 / 1000000)
+            
+            return response.text, cost
+
+        except Exception as e:
+            error_msg = str(e)
+            if "503" in error_msg or "429" in error_msg or "UNAVAILABLE" in error_msg:
+                if attempt < max_retries - 1:
+                    time.sleep(wait_time)
+                    wait_time *= 2  
+                    continue  
+            raise Exception(f"Błąd API Gemini: {error_msg}")
+        
 
 def get_weather_forecast(date_str):
     """Get weather forecast for a given date from weather API"""

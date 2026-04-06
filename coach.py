@@ -1,27 +1,8 @@
-from google import genai
 from datetime import datetime, timedelta
 import pandas as pd
 
-from tools import get_weather_forecast, long_term_stats
+from tools import get_weather_forecast, long_term_stats, ask_gemini
 
-# --- LOGIKA GEMINI ---
-
-def ask_gemini(prompt, temperature=1.0):
-    client = genai.Client() 
-
-    response = client.models.generate_content(
-        model="gemini-3-flash-preview",
-        contents=prompt,
-        config =genai.types.GenerateContentConfig(
-            temperature=temperature)
-    )
-
-    usage = response.usage_metadata
-    input_tokens = usage.prompt_token_count
-    output_tokens = usage.candidates_token_count
-
-    cost = (input_tokens * 0.5 / 1000000) + (output_tokens * 3 / 1000000)
-    return response.text, cost
 
 def ask_coach(history_df, include_competition, include_weather, easier_week, include_long_term):
  
@@ -81,8 +62,10 @@ Bądź konkretny, motywujący, ale surowy jeśli trzeba.
 
     return response, cost, prompt
 
+
+
+
 def summary_all(history_df):
-    client = genai.Client()  
     history_text = history_df.to_string(index=False)
     
     prompt = f"""

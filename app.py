@@ -1,9 +1,8 @@
 import streamlit as st
 from datetime import datetime
 import pandas as pd
-import os
 
-from database import init_db, add_workout, get_workouts, delete_workout, get_coach_logs, save_coach_log, get_latest_coach_log
+from database import init_db, add_workout, get_workouts, delete_workout, get_coach_logs, save_coach_log, update_workout
 from coach import ask_coach, summary_all, kitchen_help, gym_plan
 
 
@@ -29,11 +28,11 @@ for i, (goal, date) in enumerate(goals.items()):
 # Inicjalizacja bazy przy starcie
 init_db()
 
-tab1, tab2, tab3, tab4 = st.tabs(["Treningi", "Statystyki", "Trener", "Narzędzia"])
+tab1, tab2, tab3 = st.tabs(["Treningi", "Statystyki", "Trener"])
 
 with tab1:
     st.header("Moje treningi")
-    st.subheader("Dodaj trening")
+    st.subheader("Dodaj nowy trening")
     with st.form("workout_form"):
         col1, col2 = st.columns(2)
         with col1:
@@ -59,10 +58,10 @@ with tab1:
             add_workout(date, discipline, duration, distance, rpe, avg_heart_rate, notes)
             st.success("Trening zapisany! Dobra robota.")
 
-    st.subheader("Ostatnie treningi")
-    df = get_workouts(10) 
+    st.subheader("Edytuj ostatnie treningi")
+    df = get_workouts(5) 
     if not df.empty:
-        df.insert(len(df.columns), "delete", False)
+        df.insert(0, "delete", False)
 
         edited_df = st.data_editor(
             df,
@@ -70,29 +69,56 @@ with tab1:
             hide_index=True,  
             column_config={
                 "delete": st.column_config.CheckboxColumn(
-                    "Usuń trening",
+                    "Usuń",
                     default=False,
                 ),
-                "id": None,  
+                "id": None,
             },
-            disabled=["date", "discipline", "duration_minutes", "distance_km", "rpe", "avg_heart_rate", "notes"], #
         )
 
-        # Obsługa usuwania treningów
-        if st.button("Usuń zaznaczone treningi", key="delete_button"):
-            to_delete = edited_df[edited_df["delete"] == True]
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("Zapisz zmiany w tabeli", type="primary", use_container_width=True):
+                edited_df.fillna({"notes": "", "avg_heart_rate": 0, "distance_km": 0.0}, inplace=True)
+                
+                for index, row in edited_df.iterrows():
+                    if not row["delete"]: 
+                        update_workout(
+                            workout_id=row['id'],
+                            date=row['date'],
+                            discipline=row['discipline'],
+                            duration=row['duration_minutes'],
+                            distance=row['distance_km'],
+                            rpe=row['rpe'],
+                            avg_heart_rate=row['avg_heart_rate'],
+                            notes=row['notes']
+                        )
+                st.success("Zapisano zmiany!")
+                st.rerun() 
 
-            if not to_delete.empty:
-                for index, row in to_delete.iterrows():
-                    delete_workout(row["id"])
+        with col2:
+            if st.button("Usuń zaznaczone", use_container_width=True):
+                to_delete = edited_df[edited_df["delete"] == True]
 
-                st.success(f"Usunięto {len(to_delete)} trening(ów).")
-                st.rerun()  # Odśwież stronę, aby zobaczyć zmiany
-            else:
-                st.warning("Nie zaznaczono żadnego treningu do usunięcia.")
+                if not to_delete.empty:
+                    for index, row in to_delete.iterrows():
+                        delete_workout(row["id"])
+
+                    st.success(f"Usunięto {len(to_delete)} trening(ów).")
+                    st.rerun() 
+                else:
+                    st.warning("Nie zaznaczono żadnego treningu do usunięcia.")
     else:
         st.info("Brak zapisanych treningów.")
 
+    st.markdown("")
+    with st.expander("Pokaż wszystkie treningi"):
+        df = get_workouts() 
+        if not df.empty:
+            st.dataframe(df.drop(columns=['id']), use_container_width=True, hide_index=True)
+        else:
+            st.info("Brak zapisanych treningów.")
 
 with tab2:
     st.header("Statystyki treningowe")
@@ -153,7 +179,7 @@ with tab3:
         easier_week = st.toggle("Łatwiejszy tydzień", value=False)
 
     #st.write("Kliknij poniżej, aby wysłać swoje logi z ostatnich 7 dni do analizy.")
-    latest_advice, advice_date = get_latest_coach_log()
+    latest_advice, advice_date = get_coach_logs()
 
     if st.button("Wyślij do trenera", key="coach_button"):
             with st.spinner("Generowanie..."):
@@ -167,7 +193,7 @@ with tab3:
                     st.markdown(advice)
                     save_coach_log(advice)
                 
-                    st.rerun()  # Odśwież stronę, aby zobaczyć nową analizę
+                    st.rerun()  
                 else:
                     st.warning("Brak danych z ostatnich 7 dni.")
 
@@ -196,32 +222,10 @@ with tab3:
 
 
 
-with tab4:
-    st.header("Narzędzia dodatkowe")
-    st.subheader("Propozycja posiłku od trenera")
-    if st.button("Generuj przepis", key="kitchen_button"):
-        with st.spinner("Generowanie..."):
-            recipe, cost = kitchen_help()
-            st.markdown(recipe)
-            st.caption(f"Szacunkowy koszt analizy: ${cost:.6f}")
-
-    st.subheader("Propozycja ćwiczeń od trenera")
-    if st.button("Generuj ćwiczenia", key="gym_button"):
-        with st.spinner("Generowanie..."):
-            plan, cost = gym_plan()
-            st.markdown(plan)
-            st.caption(f"Szacunkowy koszt analizy: ${cost:.6f}")
 
 
-    st.subheader("Wszystkie treningi")
-    df = get_workouts() 
-    if not df.empty:
-        # Wyświetl ostatnie treningi w formie tabeli, ukryj kolumnę id
-        st.dataframe(df.drop(columns=['id']), use_container_width=True, hide_index=True)
-        
 
-    else:
-        st.info("Brak zapisanych treningów.")
+
     
 
 
