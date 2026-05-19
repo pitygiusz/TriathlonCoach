@@ -5,47 +5,62 @@ from datetime import timedelta
 from google import genai
 from google.genai import types
 import time
+import json
+import os
+from openai import OpenAI
 
 from database import get_workouts
 
 
-def ask_gemini(prompt, temperature=1.0, max_retries=3, response_schema=None, image=None, model_name="gemini-3.1-flash-lite-preview"):
 
-    client = genai.Client()
+def ask_openrouter_native(messages, temperature=0.0, max_retries=3, response_schema=None, model_name="google/gemini-3.1-flash-lite", api_key=None):
+
+    if api_key is None:
+        api_key = os.getenv("OPENROUTER_API_KEY")
+    
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://openrouter.ai/api/v1",
+        default_headers={
+            "HTTP-Referer": "https://triathlon-coach.local",
+            "X-Title": "TriathlonCoach"
+        }
+    )
+    
     wait_time = 2
     
-    config_args = {"temperature": temperature}
-    
-    if response_schema:
-        config_args["response_mime_type"] = "application/json"
-        config_args["response_schema"] = response_schema
-
-    contents = [image, prompt] if image else prompt
-
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model=model_name, 
-                contents=contents,
-                config=types.GenerateContentConfig(**config_args)
-            )
+            if response_schema:
+                response = client.chat.completions.parse(
+                    model=model_name,
+                    messages=messages,
+                    temperature=temperature,
+                    response_format=response_schema 
+                )
+                
+                parsed_object = response.choices[0].message.parsed
+                
+            else:
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=temperature
+                )
+                parsed_object = response.choices[0].message.content
             
-            usage = response.usage_metadata
-            input_tokens = usage.prompt_token_count
-            output_tokens = usage.candidates_token_count
-            cost = (input_tokens * 0.5 / 1000000) + (output_tokens * 3 / 1000000)
+            return parsed_object
             
-            return response.text, cost
-
         except Exception as e:
             error_msg = str(e)
-            if "503" in error_msg or "429" in error_msg or "UNAVAILABLE" in error_msg:
+            if any(err in error_msg.lower() for err in ["429", "503", "rate limit", "unavailable"]):
                 if attempt < max_retries - 1:
                     time.sleep(wait_time)
-                    wait_time *= 2  
-                    continue  
-            raise Exception(f"Błąd API Gemini: {error_msg}")
-        
+                    wait_time *= 2
+                    continue
+            raise Exception(f"Błąd API: {error_msg}")
+
+
 
 def get_weather_forecast(date_str):
     """Get weather forecast for a given date from weather API"""

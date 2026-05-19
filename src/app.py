@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 
 from database import init_db, add_workout, get_workouts, delete_workout, get_coach_logs, save_coach_log, update_workout
-from coach import ask_coach, summary_all, kitchen_help, gym_plan
+from coach import ask_coach, summary_all
 
 
 

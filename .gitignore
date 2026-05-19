@@ -1,3 +1,6 @@
 __pycache__
 gemini_test.py
 triathlon_logs.db
+triathlon_logs_backup.db
+.env
+venv

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import pandas as pd
 
-from tools import get_weather_forecast, long_term_stats, ask_gemini
+from tools import get_weather_forecast, long_term_stats, ask_openrouter_native
 
 
 def ask_coach(history_df, include_competition, include_weather, easier_week, include_long_term):
@@ -58,9 +58,10 @@ Na podstawie tych danych odpowiedz na poniższe pytania:
 Bądź konkretny, motywujący, ale surowy jeśli trzeba. 
 """
 
-    response, cost = ask_gemini(prompt, temperature=0.5)
+    messages = [{"role": "user", "content": prompt}]
+    response = ask_openrouter_native(messages, temperature=0.5)
 
-    return response, cost, prompt
+    return response, 0, prompt
 
 
 
@@ -76,37 +77,7 @@ Jesteś profesjonalnym trenerem triathlonu. Przygotowujesz mnie do zawodów. Oto
 Napisz wnioski z przygotowań w 3 krótkich bulletpointach. Zwróć JEDYNIE te bulletpointy.
 """
     
-    response, cost = ask_gemini(prompt)
+    messages = [{"role": "user", "content": prompt}]
+    response = ask_openrouter_native(messages)
 
-    return response, cost
-
-
-def kitchen_help():
-    kitchen_prompt = f"""
-Jesteś dietetykiem sportowym dla triathlonistów.
-Zadanie: Wymyśl prosty, szybki i pożywny posiłek, który mógłbym zjeść jako główny posiłek dnia. Najbardziej lubię dania mięsne (kurczak, indyk, wołowina)
-
-W odpowiedzi uwzględnij JEDYNIE następujące elementy:
-- nazwę dania
-- bardzo krótkie uzasadnienie, dlaczego jest dobre dla triathlonisty (np. zawiera odpowiednią ilość białka, węglowodanów, jest łatwostrawne itp.)
-- listę zakupów (tylko kluczowe składniki)
-- główne kroki przygotowania (maks 5, bardzo proste, bez skomplikowanych technik kulinarnych).
-"""
-    response, cost = ask_gemini(kitchen_prompt, temperature=2.0)
-    return response, cost
-
-def gym_plan():
-    gym_prompt = f"""
-Jesteś trenerem personalnym dla triathlonistów.
-Zadanie: Zaproponuj plan na pojedynczy trening na siłowni, dostosowany do potrzeb triathlonisty. 
-Trening powinien być krótki (maks 45 minut), ale efektywny, skupiający się na budowaniu siły i wytrzymałości, bez nadmiernego obciążania stawów. Skorzystaj z maszyn na siłowni.
-
-W odpowiedzi uwzględnij JEDYNIE następujące elementy:
-- nazwę treningu
-- bardzo krótkie uzasadnienie, dlaczego ten trening jest dobry dla triathlonisty (np. skupia się na kluczowych grupach mięśniowych, poprawia stabilizację itp.)
-- listę ćwiczeń (maks 5), z krótkim opisem każdego ćwiczenia (np. "Przysiady z hantlami - 3 serie po 12 powtórzeń, skup się na technice i kontroli ruchu")
-- ogólne wskazówki dotyczące tempa, przerw między seriami itp.
-"""
-    
-    response, cost = ask_gemini(gym_prompt, temperature=2.0)
-    return response, cost
+    return response, 0

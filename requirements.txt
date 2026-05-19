@@ -6,3 +6,4 @@ python-telebot
 python-dotenv
 pillow
 pydantic
+openai

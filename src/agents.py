@@ -4,66 +4,74 @@ import json
 from pydantic import BaseModel, Field
 from typing import Literal
 
-from tools import get_weather_forecast, ask_gemini
-from coach import ask_gemini
+from tools import get_weather_forecast, ask_openrouter_native
 
 
 ########################################
 # AGENT 1: Training Proposer
 ########################################
 
-def propose_training(message, history_df):
+def propose_training(conversation_context, history_df):
     history_df['date'] = pd.to_datetime(history_df['date'])
     cutoff_date = datetime.now() - timedelta(days=14)
     recent_history = history_df[history_df['date'] >= cutoff_date]
 
     if recent_history.empty:
-        return "Brak danych z ostatnich 7 dni. Dodaj więcej treningów, aby otrzymać analizę.", 0
+        return "Brak danych z ostatnich 7 dni. Dodaj więcej treningów, aby otrzymać analizę."
+        
     history_text = recent_history.to_string(index=False)
 
     today = datetime.now().strftime('%Y-%m-%d')
-
     weather = get_weather_forecast(today)
     weather_prompt = f"Weź pod uwagę warunki pogodowe na najbliszy tydzień:\n{weather}.\nNie chcę jeździć w deszczu i mrozie."
     competition_prompt = "Uwzględnij w analizie, że moim celem są zawody SuperSprint Grudziądz 14.06 i 1/2 IM Malbork 06.09."
-    context = "Nie mam trenażera, ale mam dostęp do siłowni i basenu."
+    context_info = "Nie mam trenażera, ale mam dostęp do siłowni i basenu."
 
-    prompt = f"""Jesteś profesjonalnym trenerem triathlonu. Przygotowujesz mnie do zawodów. Dziś jest {today}. Oto moje treningi z ostatnich 14 dni:
+    system_prompt = f"""Jesteś profesjonalnym trenerem triathlonu. Przygotowujesz mnie do zawodów. Dziś jest {today}. 
+Oto moje treningi z ostatnich 14 dni:
 {history_text}
+
 Oto dodatkowy kontekst:
 {weather_prompt}
 {competition_prompt}
-{context}
+{context_info}
 
-Oto moje pytanie do Ciebie: {message}
 Przygotuj to o co proszę, weź pod uwagę wszystkie dane w tym poziom zmęczenia, formy, warunków pogodowych i celów.
-Jezeli uwazasz, że powinienem odpocząć, zaproponuj trening regeneracyjny lub dzień wolny.
+Jeżeli uważasz, że powinienem odpocząć, zaproponuj trening regeneracyjny lub dzień wolny.
 Zwróć JEDYNIE plan tego treningu (dyscyplina, czas trwania, dystans, intensywność) w zwięzłej formie (ma mieścić się w jednej wiadomości).
 Bądź konkretny, motywujący, ale surowy jeśli trzeba.
 """
-    response, _ = ask_gemini(prompt, temperature=1.5)
+    # 2. Łączymy instrukcję systemową z historią rozmowy użytkownika
+    messages = [{"role": "system", "content": system_prompt}] + conversation_context
+    
+    response = ask_openrouter_native(messages, temperature=1.5)
     return response
 
 ########################################
 # AGENT 2: History Analyzer
 ########################################
 
-def analyze_history(question, history_df):
+def analyze_history(conversation_context, history_df):
     history_text = history_df.to_string(index=False)
     today = datetime.now().strftime('%Y-%m-%d')
-    prompt = f"""Jesteś profesjonalnym trenerem triathlonu. Przygotowujesz mnie do
-zawodów SuperSprint Grudziądz 14.06 i 1/2 IM Malbork 06.09. Dziś jest {today}. Oto moje ostatnie treningi:
+    
+    # 1. Tworzymy główną instrukcję systemową (System Prompt)
+    system_prompt = f"""Jesteś profesjonalnym trenerem triathlonu. Przygotowujesz mnie do zawodów SuperSprint Grudziądz 14.06 i 1/2 IM Malbork 06.09. Dziś jest {today}. 
+Oto moje ostatnie treningi:
 {history_text}
-Na ich podstawie odpowiedz na moje pytanie: {question}
+
+Odpowiedz na pytania użytkownika na podstawie powyższych danych.
 
 WAŻNE ZASADY:
 1. Jeśli użytkownik prosi o ogólne podsumowanie historii, wypisz statystyki (czas i km z podziałem na dyscypliny), oceń formę i podaj wskazówki.
-2. Jeśli z kontekstu zapytania wynika, że chodzi o JEDEN KONKRETNY trening (np. użytkownik pisze "podsumuj ten trening", odnosząc się do ostatniego biegu), znajdź ten konkretny wiersz w historii i przeanalizuj tylko jego statystyki.
+2. Jeśli z kontekstu zapytania wynika, że chodzi o JEDEN KONKRETNY trening (np. użytkownik pisze "podsumuj ten trening"), znajdź ten konkretny wiersz w historii i przeanalizuj tylko jego statystyki.
 3. Zwróć maksymalnie 5 zdań plus ewentualne statystyki. Bądź konkretny, motywujący, ale surowy jeśli trzeba. Nie dodawaj zbędnych wstępów.
 """
-    response, _ = ask_gemini(prompt, temperature=1.0)
+    # 2. Łączymy instrukcję systemową z historią rozmowy użytkownika
+    messages = [{"role": "system", "content": system_prompt}] + conversation_context
+    
+    response = ask_openrouter_native(messages, temperature=1.0)
     return response
-
 
 ########################################
 # AGENT 3: Add Workout Agent
@@ -76,8 +84,6 @@ class AddWorkoutScema(BaseModel):
     rpe: int = Field(description="Poziom odczuwalnego wysiłku (RPE) w skali 1-10")
     avg_heart_rate: int = Field(description="Średnie tętno podczas treningu (jeśli dotyczy)", default=0)
     notes: str = Field(description="Dodatkowe notatki dotyczące treningu (jezeli podane przez uzytkownika, np. partie mięśni na siłowni czy typ roweru)", default="")
-
-
 
 
 def parse_workout_data(query, previous_data=None):
@@ -96,11 +102,13 @@ def parse_workout_data(query, previous_data=None):
         oblicz właściwą datę na podstawie dzisiejszego dnia ({today_ref}) i wpisz ją w formacie RRRR-MM-DD.
         Jeśli nie podał daty, przyjmij datę dzisiejszą."""
 
-    response_text, _ = ask_gemini(prompt, temperature=0.1, response_schema=AddWorkoutScema)
-    workout = AddWorkoutScema.model_validate_json(response_text)
+    # ZMIANA NA OPENROUTER NATIVE
+    messages = [{"role": "user", "content": prompt}]
+    workout = ask_openrouter_native(messages, temperature=0.1, response_schema=AddWorkoutScema)
 
+    # Od razu używamy obiektu 'workout', nie musimy używać model_validate_json!
     return {
-        "date": workout.date, # Dodajemy datę do zwracanego słownika
+        "date": workout.date,
         "discipline": workout.discipline,
         "duration_minutes": workout.duration_minutes,
         "distance_km": workout.distance_km,
@@ -108,8 +116,6 @@ def parse_workout_data(query, previous_data=None):
         "avg_heart_rate": workout.avg_heart_rate,
         "notes": workout.notes
     }
-
-
 
 
 ########################################
@@ -126,11 +132,9 @@ def delete_workout_bot(message, history_df):
     if recent_workouts.empty:
         return -1
     else:
-        # 2. Zamieniamy ramkę Pandasa na słownik, żeby dać to Gemini
         workouts_list = recent_workouts.to_dict(orient='records')
         today_str = datetime.now().strftime('%Y-%m-%d (%A)')
                 
-                # 3. Prompt detektywistyczny dla Gemini
         match_prompt = f"""
 Dzisiaj jest {today_str}. Użytkownik napisał polecenie usunięcia: "{message}"
 Oto Twoja baza 10 ostatnich treningów w formacie JSON:
@@ -141,26 +145,25 @@ Znajdź ID treningu, o który chodzi użytkownikowi.
 - Jeśli po prostu mówi "usuń ostatni trening", wybierz pierwszy z góry.
 - Jeśli żaden trening nie pasuje do opisu, zwróć -1.
 """
-                
-                # 4. Odpytujemy Gemini, wymuszając zwrócenie ID
-        match_response, _ = ask_gemini(match_prompt, temperature=0.1, response_schema=DeleteMatchSchema)
-        match_data = DeleteMatchSchema.model_validate_json(match_response)
-                
+        # ZMIANA NA OPENROUTER NATIVE
+        messages = [{"role": "user", "content": match_prompt}]
+        match_data = ask_openrouter_native(messages, temperature=0.1, response_schema=DeleteMatchSchema)
+        
+        # Otrzymaliśmy od razu instancję DeleteMatchSchema, wyciągamy pole
         found_id = match_data.matched_id
+        
     return found_id
 
-
 ########################################
-# AGENT 5: Parse Workout from Image
+# AGENT 5: Parse Workout from Image (OpenRouter Native)
 ########################################
 
-import io
-from PIL import Image
-# Upewnij się, że masz tu import ask_gemini i AddWorkoutScema
+import base64
+# Możesz usunąć importy io oraz PIL (Image), nie będą już potrzebne!
 
 def parse_workout_from_image(image_bytes):
-    # Zamieniamy surowe bajty z Telegrama na obiekt obrazu dla Gemini
-    img = Image.open(io.BytesIO(image_bytes))
+    # 1. Zamieniamy surowe bajty z Telegrama na ciąg znaków Base64
+    base64_image = base64.b64encode(image_bytes).decode('utf-8')
     
     today_ref = datetime.now().strftime('%Y-%m-%d (%A)')
     
@@ -175,10 +178,36 @@ def parse_workout_from_image(image_bytes):
     Zwróć wynik jako JSON pasujący do schematu.
     """
 
-    # Wywołujemy Gemini z obrazem
-    response_text, _ = ask_gemini(prompt, temperature=0.1, response_schema=AddWorkoutScema, image=img)
-    workout = AddWorkoutScema.model_validate_json(response_text)
+    # 2. Budujemy natywną wiadomość z obrazem w standardzie OpenAI (Vision)
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text", 
+                    "text": prompt
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        # Standardowy prefix dla obrazków JPEG w Base64
+                        "url": f"data:image/jpeg;base64,{base64_image}" 
+                    }
+                }
+            ]
+        }
+    ]
 
+    # 3. Wywołujemy OpenRouter z ustrukturyzowanym wyjściem (Structured Output)
+    # Polecam użyć tu gpt-4o-mini lub gemini-1.5-flash przez OpenRouter
+    workout = ask_openrouter_native(
+        messages=messages, 
+        temperature=0.1, 
+        response_schema=AddWorkoutScema,
+        model_name="google/gemini-3.1-flash-lite-preview" # Model musi wspierać Vision!
+    )
+
+    # 4. Zwracamy od razu właściwości obiektu
     return {
         "date": workout.date,
         "discipline": workout.discipline,
