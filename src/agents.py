@@ -62,10 +62,10 @@ def analyze_history(conversation_context, history_df):
 Oto moje ostatnie treningi:
 {history_text}
 
-Odpowiedz na pytania użytkownika na podstawie powyższych danych.
+Odpowiedz na moje pytanie na podstawie powyższych danych.
 
 WAŻNE ZASADY:
-1. ANALIZA TRENINGÓW: Jeśli użytkownik prosi o ogólne podsumowanie, wypisz statystyki (tylko czas i km) z podziałem na dyscypliny. Jeśli użytkownik prosi o treningi w konkretnym okresie lub z danej dyscypliny, wypisz je z datami, dyscypliną, czasem, dystansem, średnim tętnem oraz tempem/prędkością. Jeśli z zapytania wynika, że chodzi o jeden konkretny trening, znajdź go w historii i przeanalizuj wyłącznie jego parametry.
+1. ANALIZA TRENINGÓW: Jeśli z zapytania wynika, że chodzi o jeden konkretny trening, znajdź go w historii i skup się tylko na nim. Jezeli pytam o jedną dyscyplinę, skup się tylko na treningach z tej dyscypliny. Jezeli pytam o konkretny okres czasu, skup się tylko na treningach z tego okresu. Wypisz statystyki z podziałem na dyscypliny (czas, dystans)
 2. PODSUMOWANIE: Po analizie dodaj krótkie podsumowanie (2-3 zdania) dotyczące mojej formy, postępów i wskazówek na przyszłość.
 3. FORMAT: Zwróć JEDYNIE plan i podsumowanie. Nie zwracaj uwagi na RPE. Nie korzystaj z markdowna. Akapity oddzielaj pusta linia. Listy wypisuj od myślnika. Dodaj nagłówek z zakresem dat, który obejmuje analiza (np. "Analiza treningów z okresu 01.06-07.06"). 
 4. TON: Bądź konkretny, motywujący, ale surowy jeśli obijam się na treningach.
