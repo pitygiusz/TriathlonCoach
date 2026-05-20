@@ -131,6 +131,18 @@ def main():
         history
     ))
     
+<<<<<<< HEAD
+=======
+    results.append(run_test_case(
+        5,
+        "Analiza Historii - Forma Fizyczna",
+        "W jakiej jestem formie? Czy jestem dobrze przygotowany?",
+        analyze_history,
+        history
+    ))
+
+
+>>>>>>> 82e8a00364dde03cb0cdbcc693c86b938e36fb4c
 
 if __name__ == "__main__":
     try:
