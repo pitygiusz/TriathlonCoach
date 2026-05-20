@@ -3,6 +3,7 @@ import pandas as pd
 import json
 from pydantic import BaseModel, Field
 from typing import Literal
+import base64
 
 from tools import get_weather_forecast, ask_openrouter_native
 
@@ -23,9 +24,9 @@ def propose_training(conversation_context, history_df):
 
     today = datetime.now().strftime('%Y-%m-%d')
     weather = get_weather_forecast(today)
-    weather_prompt = f"Weź pod uwagę warunki pogodowe na najbliszy tydzień:\n{weather}.\nNie chcę jeździć w deszczu i mrozie."
-    competition_prompt = "Uwzględnij w analizie, że moim celem są zawody SuperSprint Grudziądz 14.06 i 1/2 IM Malbork 06.09."
-    context_info = "Nie mam trenażera, ale mam dostęp do siłowni i basenu."
+    weather_prompt = f"Warunki pogodowe na najbliższe dni:\n{weather}.\nNie jeżdżę na rowerze na zewnątrz w deszczu i mrozie."
+    competition_prompt = "Mój cel: SuperSprint Grudziądz 14.06 i 1/2 IM Malbork 06.09."
+    context_info = "Sprzęt: Nie mam trenażera rowerowego, ale mam dostęp do siłowni i basenu."
 
     system_prompt = f"""Jesteś profesjonalnym trenerem triathlonu. Przygotowujesz mnie do zawodów. Dziś jest {today}. 
 Oto moje treningi z ostatnich 14 dni:
@@ -36,12 +37,19 @@ Oto dodatkowy kontekst:
 {competition_prompt}
 {context_info}
 
-Przygotuj to o co proszę, weź pod uwagę wszystkie dane w tym poziom zmęczenia, formy, warunków pogodowych i celów.
-Jeżeli uważasz, że powinienem odpocząć, zaproponuj trening regeneracyjny lub dzień wolny.
-Zwróć JEDYNIE plan tego treningu (dyscyplina, czas trwania, dystans, intensywność) w zwięzłej formie (ma mieścić się w jednej wiadomości).
-Bądź konkretny, motywujący, ale surowy jeśli trzeba.
+Odpowiedz na moją prośbę o plan treningowy, stosując się do poniższych zasad:
+
+WAŻNE ZASADY:
+0. CEL: Jezeli pytam o jeden trening, zaproponuj tylko ten jeden trening, nie cały plan.
+1. ANALIZA ZMĘCZENIA: Weź pod uwagę obciążenie z ostatnich 2-3 dni. Jeśli widoczne jest duże zmęczenie organizmu, zaplanuj aktywną regenerację (np. luźny basen) lub całkowity dzień wolny.
+2. POGODA: W przypadku mrozu lub deszczu unikaj treningów rowerowych na zewnątrz. W przypadku ładnej pogody nie proponuj trenażera, tylko jazdę na zewnątrz. 
+3. LISTA TRENINGÓW: Każdy trening z planu zapisz w jednej linii od myślnika (jeden myślnik = jeden trening). W tej linii zmieść dzień, dyscyplinę, całkowity czas i główne zadanie (np. "- Sobota: Rower, 2h, spokojnie w Z2 z akcentami na podjazdach").
+4. PODSUMOWANIE: Pod listą treningów dodaj DOKŁADNIE 2-3 zdania podsumowania mojej formy i wskazówek na najbliższe dni.
+5. MARGINALIZACJA RPE: RPE z historii to tylko wskaźnik pomocniczy. Głównym wyznacznikiem obciążenia jest dystans, czas i tętno. Zwracaj uwagę na RPE tylko wtedy, gdy drastycznie nie pasuje do średniego tętna. W przeciwnym razie nie wspominaj o nim.
+6. FORMAT: Zwróć JEDYNIE plan i podsumowanie.Nie korzystaj z markdowna. Akapity oddzielaj pusta linia. Listy wypisuj od myślnika. Dodaj nagłówek z zakresem dat, który obejmuje plan (np. "Plan treningowy na okres 10.06-16.06" lub "Plan na dziś").
+7. TON: Bądź konkretny, motywujący, ale surowy jeśli obijam się na treningach.
 """
-    # 2. Łączymy instrukcję systemową z historią rozmowy użytkownika
+    
     messages = [{"role": "system", "content": system_prompt}] + conversation_context
     
     response = ask_openrouter_native(messages, temperature=1.5)
@@ -55,7 +63,6 @@ def analyze_history(conversation_context, history_df):
     history_text = history_df.to_string(index=False)
     today = datetime.now().strftime('%Y-%m-%d')
     
-    # 1. Tworzymy główną instrukcję systemową (System Prompt)
     system_prompt = f"""Jesteś profesjonalnym trenerem triathlonu. Przygotowujesz mnie do zawodów SuperSprint Grudziądz 14.06 i 1/2 IM Malbork 06.09. Dziś jest {today}. 
 Oto moje ostatnie treningi:
 {history_text}
@@ -63,11 +70,15 @@ Oto moje ostatnie treningi:
 Odpowiedz na pytania użytkownika na podstawie powyższych danych.
 
 WAŻNE ZASADY:
-1. Jeśli użytkownik prosi o ogólne podsumowanie historii, wypisz statystyki (czas i km z podziałem na dyscypliny), oceń formę i podaj wskazówki.
-2. Jeśli z kontekstu zapytania wynika, że chodzi o JEDEN KONKRETNY trening (np. użytkownik pisze "podsumuj ten trening"), znajdź ten konkretny wiersz w historii i przeanalizuj tylko jego statystyki.
-3. Zwróć maksymalnie 5 zdań plus ewentualne statystyki. Bądź konkretny, motywujący, ale surowy jeśli trzeba. Nie dodawaj zbędnych wstępów.
+1. ZESTAWIENIE OGÓLNE: Jeśli użytkownik prosi o ogólne podsumowanie, wypisz statystyki (tylko czas i km) z podziałem na dyscypliny).
+2. LISTA TRENINGÓW: Jeśli użytkownik prosi o treningi w konkretnym okresie lub z danej dyscypliny, wypisz je z datami, dyscypliną, czasem, dystansem, średnim tętnem oraz tempem/prędkością.
+3. KONKRETNY TRENING: Jeśli z zapytania wynika, że chodzi o jeden konkretny trening, znajdź go w historii i przeanalizuj wyłącznie jego parametry.
+4. MATEMATYKA: Bądź precyzyjny. Dla roweru podawaj prędkość (km/h), dla biegu i pływania tempo (min/km lub min/100m w formacie MM:SS).
+5. MARGINALIZACJA RPE: RPE to tylko wskaźnik pomocniczy. Głównym wyznacznikiem obciążenia jest dystans, czas i tętno. Zwracaj uwagę na RPE tylko wtedy, gdy drastycznie nie pasuje do średniego tętna (np. bardzo niskie tętno i wysokie RPE). W przeciwnym razie w ogóle o nim nie wspominaj.
+6. FORMAT I DŁUGOŚĆ: Część opisowa (wnioski, ocena formy, wskazówki) ma być zwięzła - MAKSYMALNIE 5 ZDAŃ. Nie korzystaj z markdowna. Akapity oddzielaj pusta linia. Listy wypisuj od myślnika. Nigdy nie podawaj systemowych ID treningów. Dodaj nagłówek z zakresem dat, którego dotyczy analiza (np. "Analiza treningów z okresu 01.06-07.06").
+7. TON: Bądź konkretny, motywujący, ale surowy jeśli obijam się na treningach.
 """
-    # 2. Łączymy instrukcję systemową z historią rozmowy użytkownika
+
     messages = [{"role": "system", "content": system_prompt}] + conversation_context
     
     response = ask_openrouter_native(messages, temperature=1.0)
@@ -102,11 +113,9 @@ def parse_workout_data(query, previous_data=None):
         oblicz właściwą datę na podstawie dzisiejszego dnia ({today_ref}) i wpisz ją w formacie RRRR-MM-DD.
         Jeśli nie podał daty, przyjmij datę dzisiejszą."""
 
-    # ZMIANA NA OPENROUTER NATIVE
     messages = [{"role": "user", "content": prompt}]
     workout = ask_openrouter_native(messages, temperature=0.1, response_schema=AddWorkoutScema)
 
-    # Od razu używamy obiektu 'workout', nie musimy używać model_validate_json!
     return {
         "date": workout.date,
         "discipline": workout.discipline,
@@ -145,24 +154,20 @@ Znajdź ID treningu, o który chodzi użytkownikowi.
 - Jeśli po prostu mówi "usuń ostatni trening", wybierz pierwszy z góry.
 - Jeśli żaden trening nie pasuje do opisu, zwróć -1.
 """
-        # ZMIANA NA OPENROUTER NATIVE
+
         messages = [{"role": "user", "content": match_prompt}]
         match_data = ask_openrouter_native(messages, temperature=0.1, response_schema=DeleteMatchSchema)
         
-        # Otrzymaliśmy od razu instancję DeleteMatchSchema, wyciągamy pole
         found_id = match_data.matched_id
         
     return found_id
 
 ########################################
-# AGENT 5: Parse Workout from Image (OpenRouter Native)
+# AGENT 5: Parse Workout from Image 
 ########################################
 
-import base64
-# Możesz usunąć importy io oraz PIL (Image), nie będą już potrzebne!
 
 def parse_workout_from_image(image_bytes):
-    # 1. Zamieniamy surowe bajty z Telegrama na ciąg znaków Base64
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
     
     today_ref = datetime.now().strftime('%Y-%m-%d (%A)')
@@ -178,7 +183,6 @@ def parse_workout_from_image(image_bytes):
     Zwróć wynik jako JSON pasujący do schematu.
     """
 
-    # 2. Budujemy natywną wiadomość z obrazem w standardzie OpenAI (Vision)
     messages = [
         {
             "role": "user",
@@ -190,7 +194,6 @@ def parse_workout_from_image(image_bytes):
                 {
                     "type": "image_url",
                     "image_url": {
-                        # Standardowy prefix dla obrazków JPEG w Base64
                         "url": f"data:image/jpeg;base64,{base64_image}" 
                     }
                 }
@@ -198,16 +201,13 @@ def parse_workout_from_image(image_bytes):
         }
     ]
 
-    # 3. Wywołujemy OpenRouter z ustrukturyzowanym wyjściem (Structured Output)
-    # Polecam użyć tu gpt-4o-mini lub gemini-1.5-flash przez OpenRouter
     workout = ask_openrouter_native(
         messages=messages, 
         temperature=0.1, 
         response_schema=AddWorkoutScema,
-        model_name="google/gemini-3.1-flash-lite-preview" # Model musi wspierać Vision!
+        model_name="google/gemini-3.1-flash-lite" 
     )
 
-    # 4. Zwracamy od razu właściwości obiektu
     return {
         "date": workout.date,
         "discipline": workout.discipline,
